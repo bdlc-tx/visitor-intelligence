@@ -6,7 +6,13 @@ const store = require('../store/contacts');
 const router = Router();
 
 // POST /webhooks/rb2b
-// Receives RB2B visitor identification payloads
+// Receives RB2B visitor identification payloads.
+// Accepts both RB2B's native flat format (spaced keys) and our own
+// nested format (for testing / other senders).
+//
+// RB2B native flat payload fields:
+//   "LinkedIn URL", "First Name", "Last Name", "Title", "Company Name",
+//   "Business Email", "Website", "Captured URL", "Seen At", "Referrer"
 router.post('/rb2b', (req, res) => {
   try {
     const payload = req.body;
@@ -15,7 +21,32 @@ router.post('/rb2b', (req, res) => {
       return res.status(400).json({ error: 'Request body must be a JSON object' });
     }
 
-    const { person, pageVisit } = payload;
+    // --- Detect and normalise RB2B's native flat format ---
+    // RB2B sends a flat object with space-separated keys like "LinkedIn URL".
+    // We remap to our internal nested format before validation.
+    let person, pageVisit;
+
+    if (payload['LinkedIn URL'] || payload['Business Email']) {
+      // Native RB2B format
+      person = {
+        email:         payload['Business Email'] || null,
+        linkedinUrl:   payload['LinkedIn URL']   || null,
+        firstName:     payload['First Name']     || null,
+        lastName:      payload['Last Name']      || null,
+        jobTitle:      payload['Title']          || null,
+        company:       payload['Company Name']   || null,
+        companyDomain: payload['Website']
+          ? payload['Website'].replace(/^https?:\/\/(www\.)?/, '').split('/')[0]
+          : null,
+      };
+      pageVisit = payload['Captured URL']
+        ? { url: payload['Captured URL'], visitedAt: payload['Seen At'] || null, referrer: payload['Referrer'] || null }
+        : null;
+    } else {
+      // Our own nested test format
+      person    = payload.person;
+      pageVisit = payload.pageVisit;
+    }
 
     if (!person || typeof person !== 'object') {
       return res.status(400).json({ error: 'Missing required field: person' });
