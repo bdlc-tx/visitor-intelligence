@@ -29,7 +29,7 @@ const SHARED_STYLES = `
   .source-pill.rb2b   { background: #1e1b4b; color: #a5b4fc; border: 1px solid #312e81; }
   .source-pill.vector { background: #0d2d1a; color: #6ee7b7; border: 1px solid #064e3b; }
 
-  .score-wrap { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+  .score-wrap { display: flex; align-items: center; gap: 8px; min-width: 100px; }
   .score-bar-bg { flex: 1; height: 6px; background: #0f172a; border-radius: 99px; overflow: hidden; }
   .score-bar { height: 100%; border-radius: 99px; }
   .score-bar.hot  { background: #ef4444; }
@@ -100,11 +100,31 @@ function shell(title, activeTab, body, extraStyles = '') {
   .stat-card.warm .val { color:#fbbf24; }
   .stat-card.cold .val { color:#60a5fa; }
 
+  /* ── Dashboard charts row ── */
+  .dashboard-row { display:grid; grid-template-columns:200px 1fr 1fr; gap:12px; padding:0 32px 20px; }
+  .chart-card { background:#1e293b; border:1px solid #334155; border-radius:12px; padding:16px 20px; }
+  .chart-title { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.7px; color:#64748b; margin-bottom:14px; }
+  .donut-wrap { display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .donut-legend { display:flex; flex-direction:column; gap:5px; width:100%; }
+  .legend-item { display:flex; align-items:center; justify-content:space-between; font-size:12px; }
+  .legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-right:6px; }
+  .legend-label { color:#94a3b8; display:flex; align-items:center; }
+  .legend-val { color:#e2e8f0; font-weight:600; font-size:12px; }
+  .bar-list { display:flex; flex-direction:column; gap:8px; }
+  .bar-item { display:flex; flex-direction:column; gap:4px; }
+  .bar-item-header { display:flex; justify-content:space-between; font-size:12px; }
+  .bar-item-label { color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
+  .bar-item-val { color:#e2e8f0; font-weight:600; flex-shrink:0; margin-left:8px; }
+  .bar-track { height:4px; background:#0f172a; border-radius:99px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:99px; background:#6366f1; }
+  .bar-fill.hot  { background:#ef4444; }
+  .bar-fill.warm { background:#f59e0b; }
+
   /* ── Table base ── */
   .section-wrap { padding:0 32px 40px; }
-  .section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
   .section-title { font-size:14px; font-weight:600; color:#94a3b8; }
-  .filter-row { display:flex; gap:8px; align-items:center; }
+  .filter-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .filter-btn { font-size:12px; padding:4px 12px; border-radius:99px; border:1px solid #334155; background:transparent; color:#94a3b8; cursor:pointer; transition:all .15s; }
   .filter-btn:hover, .filter-btn.active { border-color:#6366f1; color:#818cf8; background:#1e1b4b; }
   .filter-btn.active { font-weight:600; }
@@ -112,8 +132,15 @@ function shell(title, activeTab, body, extraStyles = '') {
   .search-box:focus { border-color:#6366f1; }
   .search-box::placeholder { color:#475569; }
 
+  /* sortable table */
   table { width:100%; border-collapse:collapse; font-size:13px; }
-  thead th { text-align:left; padding:10px 14px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; color:#475569; border-bottom:1px solid #1e293b; }
+  thead th { text-align:left; padding:10px 14px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; color:#475569; border-bottom:1px solid #1e293b; white-space:nowrap; user-select:none; }
+  thead th.sortable { cursor:pointer; }
+  thead th.sortable:hover { color:#94a3b8; }
+  thead th.sort-asc, thead th.sort-desc { color:#818cf8; }
+  .sort-icon { margin-left:4px; opacity:0.5; font-size:10px; }
+  thead th.sort-asc  .sort-icon,
+  thead th.sort-desc .sort-icon { opacity:1; color:#818cf8; }
   tbody tr { border-bottom:1px solid #1e293b; transition:background .1s; cursor:pointer; }
   tbody tr:hover { background:#1e293b; }
   tbody td { padding:12px 14px; vertical-align:middle; }
@@ -169,28 +196,47 @@ app.get('/', (req, res) => {
   <div class="stat-card"><div class="lbl">Ad Clicks</div><div class="val" id="s-clicks">—</div></div>
 </div>
 
+<!-- Dashboard charts -->
+<div class="dashboard-row" id="dashboard-row" style="display:none">
+  <div class="chart-card">
+    <div class="chart-title">Tier Breakdown</div>
+    <div class="donut-wrap">
+      <svg id="donut-svg" width="110" height="110" viewBox="0 0 110 110"></svg>
+      <div class="donut-legend" id="donut-legend"></div>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Top Companies</div>
+    <div class="bar-list" id="top-companies"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Top Job Titles</div>
+    <div class="bar-list" id="top-titles"></div>
+  </div>
+</div>
+
 <div class="section-wrap">
   <div class="section-header">
     <span class="section-title" id="people-label">People</span>
     <div class="filter-row">
-      <input class="search-box" id="search" placeholder="Search name, company, email…" oninput="debounceLoad()">
+      <input class="search-box" id="search" placeholder="Search name, company, email…" oninput="debounceRender()">
       <button class="filter-btn active" data-tier="">All</button>
       <button class="filter-btn" data-tier="hot">🔥 Hot</button>
       <button class="filter-btn" data-tier="warm">⚡ Warm</button>
       <button class="filter-btn" data-tier="cold">❄ Cold</button>
     </div>
   </div>
-  <table>
+  <table id="people-table">
     <thead>
       <tr>
-        <th>Person</th>
-        <th>Title</th>
-        <th>Email</th>
-        <th>Score</th>
-        <th>Tier</th>
+        <th class="sortable" data-col="name">Person <span class="sort-icon">↕</span></th>
+        <th class="sortable" data-col="jobTitle">Title <span class="sort-icon">↕</span></th>
+        <th class="sortable" data-col="company">Company <span class="sort-icon">↕</span></th>
+        <th class="sortable sort-desc" data-col="intentScore">Score <span class="sort-icon">↓</span></th>
+        <th class="sortable" data-col="intentTier">Tier <span class="sort-icon">↕</span></th>
         <th>Sources</th>
-        <th>Visits</th>
-        <th>Last Seen</th>
+        <th class="sortable" data-col="visitCount">Visits <span class="sort-icon">↕</span></th>
+        <th class="sortable" data-col="lastSeenAt">Last Seen <span class="sort-icon">↕</span></th>
       </tr>
     </thead>
     <tbody id="people-body">
@@ -201,6 +247,15 @@ app.get('/', (req, res) => {
 
 <script>
   let activeTier = '', searchTimer;
+  let allPeople = [];
+  let sortCol = 'intentScore', sortDir = 'desc';
+
+  async function loadPeople() {
+    const data = await fetch('/api/contacts?limit=200&sort=intentScore&order=desc').then(r => r.json());
+    allPeople = data.contacts || [];
+    buildDashboard(allPeople);
+    renderTable();
+  }
 
   async function loadStats() {
     const s = await fetch('/api/stats').then(r => r.json());
@@ -212,33 +267,123 @@ app.get('/', (req, res) => {
     document.getElementById('s-clicks').textContent = s.adClickTotal;
   }
 
-  async function loadPeople() {
-    const q = document.getElementById('search').value.trim();
-    let url = '/api/contacts?limit=200&sort=intentScore&order=desc';
-    if (activeTier) url += '&tier=' + activeTier;
-    const data = await fetch(url).then(r => r.json());
-    let contacts = data.contacts || [];
+  function buildDashboard(people) {
+    // Tier donut
+    const hot  = people.filter(p => p.intentTier === 'hot').length;
+    const warm = people.filter(p => p.intentTier === 'warm').length;
+    const cold = people.filter(p => p.intentTier === 'cold').length;
+    drawDonut([
+      { label:'Hot',  val:hot,  color:'#ef4444' },
+      { label:'Warm', val:warm, color:'#f59e0b' },
+      { label:'Cold', val:cold, color:'#3b82f6' },
+    ], 'donut-svg', 'donut-legend');
 
-    // Client-side search filter
-    if (q) {
-      const lq = q.toLowerCase();
-      contacts = contacts.filter(c =>
-        (c.firstName + ' ' + c.lastName).toLowerCase().includes(lq) ||
-        (c.company || '').toLowerCase().includes(lq) ||
-        (c.email || '').toLowerCase().includes(lq) ||
-        (c.jobTitle || '').toLowerCase().includes(lq)
-      );
+    // Top companies
+    const compMap = {};
+    people.forEach(p => { const c = p.company||'Unknown'; compMap[c] = (compMap[c]||0)+1; });
+    const topCompanies = Object.entries(compMap).sort((a,b)=>b[1]-a[1]).slice(0,7);
+    const maxC = topCompanies[0]?.[1] || 1;
+    document.getElementById('top-companies').innerHTML = topCompanies.map(([name,cnt]) =>
+      \`<div class="bar-item">
+        <div class="bar-item-header"><span class="bar-item-label" title="\${esc(name)}">\${esc(name)}</span><span class="bar-item-val">\${cnt}</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:\${Math.round(cnt/maxC*100)}%"></div></div>
+      </div>\`).join('');
+
+    // Top job titles
+    const titleMap = {};
+    people.forEach(p => { if (p.jobTitle) { titleMap[p.jobTitle] = (titleMap[p.jobTitle]||0)+1; } });
+    const topTitles = Object.entries(titleMap).sort((a,b)=>b[1]-a[1]).slice(0,7);
+    const maxT = topTitles[0]?.[1] || 1;
+    document.getElementById('top-titles').innerHTML = topTitles.map(([name,cnt]) =>
+      \`<div class="bar-item">
+        <div class="bar-item-header"><span class="bar-item-label" title="\${esc(name)}">\${esc(name)}</span><span class="bar-item-val">\${cnt}</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:\${Math.round(cnt/maxT*100)}%"></div></div>
+      </div>\`).join('');
+
+    document.getElementById('dashboard-row').style.display = 'grid';
+  }
+
+  function drawDonut(segments, svgId, legendId) {
+    const cx=55, cy=55, r=38, inner=24;
+    const total = segments.reduce((s,x)=>s+x.val,0) || 1;
+    let startAngle = -Math.PI/2;
+    let paths = '';
+    segments.forEach(seg => {
+      const angle = (seg.val/total) * 2 * Math.PI;
+      const endAngle = startAngle + angle;
+      if (angle < 0.01) { startAngle = endAngle; return; }
+      const x1=cx+r*Math.cos(startAngle), y1=cy+r*Math.sin(startAngle);
+      const x2=cx+r*Math.cos(endAngle),   y2=cy+r*Math.sin(endAngle);
+      const x3=cx+inner*Math.cos(endAngle),y3=cy+inner*Math.sin(endAngle);
+      const x4=cx+inner*Math.cos(startAngle),y4=cy+inner*Math.sin(startAngle);
+      const large = angle > Math.PI ? 1 : 0;
+      paths += \`<path d="M\${x1},\${y1} A\${r},\${r} 0 \${large},1 \${x2},\${y2} L\${x3},\${y3} A\${inner},\${inner} 0 \${large},0 \${x4},\${y4} Z" fill="\${seg.color}"/>\`;
+      startAngle = endAngle;
+    });
+    document.getElementById(svgId).innerHTML = paths +
+      \`<text x="\${cx}" y="\${cy+5}" text-anchor="middle" fill="#f1f5f9" font-size="18" font-weight="700" font-family="system-ui">\${total}</text>\`;
+    document.getElementById(legendId).innerHTML = segments.map(s =>
+      \`<div class="legend-item">
+        <span class="legend-label"><span class="legend-dot" style="background:\${s.color}"></span>\${s.label}</span>
+        <span class="legend-val">\${s.val} <span style="color:#475569;font-weight:400">\${Math.round(s.val/total*100)}%</span></span>
+      </div>\`).join('');
+  }
+
+  function getVal(c, col) {
+    switch(col) {
+      case 'name':       return ((c.firstName||'') + ' ' + (c.lastName||'')).trim().toLowerCase() || (c.fullName||'').toLowerCase();
+      case 'jobTitle':   return (c.jobTitle||'').toLowerCase();
+      case 'company':    return (c.company||'').toLowerCase();
+      case 'intentScore':return c.intentScore || 0;
+      case 'intentTier': return ['hot','warm','cold'].indexOf(c.intentTier||'cold');
+      case 'visitCount': return c.visitCount || 0;
+      case 'lastSeenAt': return c.lastSeenAt || '';
+      default:           return '';
     }
+  }
 
-    document.getElementById('people-label').textContent = 'People (' + contacts.length + ')';
+  function renderTable() {
+    const q = (document.getElementById('search').value || '').toLowerCase();
+    let list = allPeople.slice();
+    if (activeTier) list = list.filter(c => c.intentTier === activeTier);
+    if (q) list = list.filter(c =>
+      ((c.firstName||'') + ' ' + (c.lastName||'')).toLowerCase().includes(q) ||
+      (c.fullName||'').toLowerCase().includes(q) ||
+      (c.company||'').toLowerCase().includes(q) ||
+      (c.email||'').toLowerCase().includes(q) ||
+      (c.jobTitle||'').toLowerCase().includes(q)
+    );
+
+    list.sort((a, b) => {
+      const av = getVal(a, sortCol), bv = getVal(b, sortCol);
+      const mul = sortDir === 'asc' ? 1 : -1;
+      if (av < bv) return -1 * mul;
+      if (av > bv) return  1 * mul;
+      return 0;
+    });
+
+    document.getElementById('people-label').textContent = 'People (' + list.length + ')';
+
+    // Update header arrows
+    document.querySelectorAll('#people-table thead th.sortable').forEach(th => {
+      const col = th.dataset.col;
+      th.classList.remove('sort-asc','sort-desc');
+      const icon = th.querySelector('.sort-icon');
+      if (col === sortCol) {
+        th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+        icon.textContent = sortDir === 'asc' ? '↑' : '↓';
+      } else {
+        icon.textContent = '↕';
+      }
+    });
+
     const tbody = document.getElementById('people-body');
-
-    if (!contacts.length) {
+    if (!list.length) {
       tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:48px;color:#475569">No contacts found.</td></tr>';
       return;
     }
 
-    tbody.innerHTML = contacts.map(c => {
+    tbody.innerHTML = list.map(c => {
       const name    = [c.firstName, c.lastName].filter(Boolean).join(' ') || c.fullName || '—';
       const tier    = c.intentTier || 'cold';
       const sources = (c.sources||[]).map(s => '<span class="source-pill '+s+'">'+s+'</span>').join('');
@@ -246,22 +391,43 @@ app.get('/', (req, res) => {
         ? '<a class="contact-sub" href="/account?company='+encodeURIComponent(c.company)+'" onclick="event.stopPropagation()">'+esc(c.company)+'</a>'
         : '';
       return '<tr onclick="location.href=\\'/account?company='+encodeURIComponent(c.company||'')+'\\'">' +
-        '<td><div class="contact-name">'+esc(name)+'</div>'+company+'</td>' +
+        '<td><div class="contact-name">'+esc(name)+'</div></td>' +
         '<td class="cell-muted">'+esc(c.jobTitle||'—')+'</td>' +
-        '<td class="cell-muted">'+esc(c.email||'—')+'</td>' +
+        '<td>'+company+'</td>' +
         '<td>'+scoreBadge(c.intentScore, tier)+'</td>' +
         '<td><span class="tier-badge '+tier+'">'+tier+'</span></td>' +
         '<td>'+sources+'</td>' +
-        '<td class="cell-dim">'+( c.visitCount||0)+'</td>' +
+        '<td class="cell-dim">'+(c.visitCount||0)+'</td>' +
         '<td class="cell-dim">'+relativeTime(c.lastSeenAt)+'</td>' +
         '</tr>';
     }).join('');
   }
 
-  function debounceLoad() {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(loadPeople, 250);
-  }
+  function debounceRender() { clearTimeout(searchTimer); searchTimer = setTimeout(renderTable, 200); }
+
+  // Sort header clicks
+  document.querySelectorAll('#people-table thead th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (sortCol === col) {
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortCol = col;
+        sortDir = ['intentScore','visitCount','lastSeenAt'].includes(col) ? 'desc' : 'asc';
+      }
+      renderTable();
+    });
+  });
+
+  // Tier filter buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTier = btn.dataset.tier;
+      renderTable();
+    });
+  });
 
   async function refresh() {
     try {
@@ -273,15 +439,6 @@ app.get('/', (req, res) => {
       b.style.display = 'block'; b.textContent = 'Failed to load: ' + e.message;
     }
   }
-
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeTier = btn.dataset.tier;
-      loadPeople();
-    });
-  });
 
   refresh();
   setInterval(refresh, 30000);
@@ -303,28 +460,47 @@ app.get('/accounts', (req, res) => {
   <div class="stat-card"><div class="lbl">Ad Clicks</div><div class="val" id="s-clicks">—</div></div>
 </div>
 
+<!-- Dashboard charts -->
+<div class="dashboard-row" id="dashboard-row" style="display:none">
+  <div class="chart-card">
+    <div class="chart-title">Account Tiers</div>
+    <div class="donut-wrap">
+      <svg id="donut-svg" width="110" height="110" viewBox="0 0 110 110"></svg>
+      <div class="donut-legend" id="donut-legend"></div>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Top Accounts by Score</div>
+    <div class="bar-list" id="top-score-accts"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Top Accounts by Visits</div>
+    <div class="bar-list" id="top-visit-accts"></div>
+  </div>
+</div>
+
 <div class="section-wrap">
   <div class="section-header">
     <span class="section-title" id="accts-label">Accounts</span>
     <div class="filter-row">
-      <input class="search-box" id="search" placeholder="Search company…" oninput="debounceLoad()">
+      <input class="search-box" id="search" placeholder="Search company…" oninput="debounceRender()">
       <button class="filter-btn active" data-tier="">All</button>
       <button class="filter-btn" data-tier="hot">🔥 Hot</button>
       <button class="filter-btn" data-tier="warm">⚡ Warm</button>
       <button class="filter-btn" data-tier="cold">❄ Cold</button>
     </div>
   </div>
-  <table>
+  <table id="accts-table">
     <thead>
       <tr>
-        <th>Account</th>
-        <th>People</th>
-        <th>Top Score</th>
-        <th>Tier</th>
+        <th class="sortable sort-asc" data-col="company">Account <span class="sort-icon">↑</span></th>
+        <th class="sortable" data-col="peopleCount">People <span class="sort-icon">↕</span></th>
+        <th class="sortable sort-desc" data-col="topIntentScore">Top Score <span class="sort-icon">↓</span></th>
+        <th class="sortable" data-col="topIntentTier">Tier <span class="sort-icon">↕</span></th>
         <th>Sources</th>
-        <th>Total Visits</th>
-        <th>Ad Clicks</th>
-        <th>Last Seen</th>
+        <th class="sortable" data-col="totalVisits">Visits <span class="sort-icon">↕</span></th>
+        <th class="sortable" data-col="totalAdClicks">Ad Clicks <span class="sort-icon">↕</span></th>
+        <th class="sortable" data-col="lastSeenAt">Last Seen <span class="sort-icon">↕</span></th>
       </tr>
     </thead>
     <tbody id="accts-body">
@@ -335,6 +511,7 @@ app.get('/accounts', (req, res) => {
 
 <script>
   let activeTier = '', searchTimer, allAccounts = [];
+  let sortCol = 'topIntentScore', sortDir = 'desc';
 
   async function loadAccounts() {
     const data = await fetch('/api/accounts').then(r => r.json());
@@ -342,29 +519,123 @@ app.get('/accounts', (req, res) => {
 
     // Stats
     document.getElementById('s-accts').textContent  = allAccounts.length;
-    const totalPeople  = allAccounts.reduce((s,a) => s + a.peopleCount, 0);
-    const hotAccts     = allAccounts.filter(a => a.topIntentTier === 'hot').length;
-    const warmAccts    = allAccounts.filter(a => a.topIntentTier === 'warm').length;
-    const totalVisits  = allAccounts.reduce((s,a) => s + a.totalVisits, 0);
-    const totalClicks  = allAccounts.reduce((s,a) => s + a.totalAdClicks, 0);
+    const totalPeople = allAccounts.reduce((s,a) => s + a.peopleCount, 0);
+    const hotAccts    = allAccounts.filter(a => a.topIntentTier === 'hot').length;
+    const warmAccts   = allAccounts.filter(a => a.topIntentTier === 'warm').length;
+    const totalVisits = allAccounts.reduce((s,a) => s + a.totalVisits, 0);
+    const totalClicks = allAccounts.reduce((s,a) => s + a.totalAdClicks, 0);
     document.getElementById('s-total').textContent  = totalPeople;
     document.getElementById('s-hot').textContent    = hotAccts;
     document.getElementById('s-warm').textContent   = warmAccts;
     document.getElementById('s-visits').textContent = totalVisits;
     document.getElementById('s-clicks').textContent = totalClicks;
 
+    buildDashboard(allAccounts);
     renderTable();
+  }
+
+  function buildDashboard(accounts) {
+    const hot  = accounts.filter(a => a.topIntentTier === 'hot').length;
+    const warm = accounts.filter(a => a.topIntentTier === 'warm').length;
+    const cold = accounts.filter(a => a.topIntentTier === 'cold').length;
+    drawDonut([
+      { label:'Hot',  val:hot,  color:'#ef4444' },
+      { label:'Warm', val:warm, color:'#f59e0b' },
+      { label:'Cold', val:cold, color:'#3b82f6' },
+    ], 'donut-svg', 'donut-legend');
+
+    // Top by score
+    const byScore = accounts.slice().sort((a,b)=>b.topIntentScore-a.topIntentScore).slice(0,7);
+    const maxScore = byScore[0]?.topIntentScore || 1;
+    document.getElementById('top-score-accts').innerHTML = byScore.map(a => {
+      const tier = a.topIntentTier || 'cold';
+      return \`<div class="bar-item">
+        <div class="bar-item-header"><span class="bar-item-label" title="\${esc(a.company)}">\${esc(a.company)}</span><span class="bar-item-val">\${a.topIntentScore}</span></div>
+        <div class="bar-track"><div class="bar-fill \${tier}" style="width:\${Math.round(a.topIntentScore/maxScore*100)}%"></div></div>
+      </div>\`;
+    }).join('');
+
+    // Top by visits
+    const byVisits = accounts.slice().sort((a,b)=>b.totalVisits-a.totalVisits).slice(0,7);
+    const maxVisits = byVisits[0]?.totalVisits || 1;
+    document.getElementById('top-visit-accts').innerHTML = byVisits.map(a =>
+      \`<div class="bar-item">
+        <div class="bar-item-header"><span class="bar-item-label" title="\${esc(a.company)}">\${esc(a.company)}</span><span class="bar-item-val">\${a.totalVisits}</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:\${Math.round(a.totalVisits/maxVisits*100)}%"></div></div>
+      </div>\`).join('');
+
+    document.getElementById('dashboard-row').style.display = 'grid';
+  }
+
+  function drawDonut(segments, svgId, legendId) {
+    const cx=55, cy=55, r=38, inner=24;
+    const total = segments.reduce((s,x)=>s+x.val,0) || 1;
+    let startAngle = -Math.PI/2;
+    let paths = '';
+    segments.forEach(seg => {
+      const angle = (seg.val/total) * 2 * Math.PI;
+      const endAngle = startAngle + angle;
+      if (angle < 0.01) { startAngle = endAngle; return; }
+      const x1=cx+r*Math.cos(startAngle), y1=cy+r*Math.sin(startAngle);
+      const x2=cx+r*Math.cos(endAngle),   y2=cy+r*Math.sin(endAngle);
+      const x3=cx+inner*Math.cos(endAngle),y3=cy+inner*Math.sin(endAngle);
+      const x4=cx+inner*Math.cos(startAngle),y4=cy+inner*Math.sin(startAngle);
+      const large = angle > Math.PI ? 1 : 0;
+      paths += \`<path d="M\${x1},\${y1} A\${r},\${r} 0 \${large},1 \${x2},\${y2} L\${x3},\${y3} A\${inner},\${inner} 0 \${large},0 \${x4},\${y4} Z" fill="\${seg.color}"/>\`;
+      startAngle = endAngle;
+    });
+    document.getElementById(svgId).innerHTML = paths +
+      \`<text x="\${cx}" y="\${cy+5}" text-anchor="middle" fill="#f1f5f9" font-size="18" font-weight="700" font-family="system-ui">\${total}</text>\`;
+    document.getElementById(legendId).innerHTML = segments.map(s =>
+      \`<div class="legend-item">
+        <span class="legend-label"><span class="legend-dot" style="background:\${s.color}"></span>\${s.label}</span>
+        <span class="legend-val">\${s.val} <span style="color:#475569;font-weight:400">\${Math.round(s.val/total*100)}%</span></span>
+      </div>\`).join('');
+  }
+
+  function getVal(a, col) {
+    switch(col) {
+      case 'company':       return (a.company||'').toLowerCase();
+      case 'peopleCount':   return a.peopleCount || 0;
+      case 'topIntentScore':return a.topIntentScore || 0;
+      case 'topIntentTier': return ['hot','warm','cold'].indexOf(a.topIntentTier||'cold');
+      case 'totalVisits':   return a.totalVisits || 0;
+      case 'totalAdClicks': return a.totalAdClicks || 0;
+      case 'lastSeenAt':    return a.lastSeenAt || '';
+      default:              return '';
+    }
   }
 
   function renderTable() {
     const q = (document.getElementById('search').value || '').toLowerCase();
-    let list = allAccounts;
+    let list = allAccounts.slice();
     if (activeTier) list = list.filter(a => a.topIntentTier === activeTier);
     if (q) list = list.filter(a => (a.company||'').toLowerCase().includes(q) || (a.companyDomain||'').toLowerCase().includes(q));
 
-    document.getElementById('accts-label').textContent = 'Accounts (' + list.length + ')';
-    const tbody = document.getElementById('accts-body');
+    list.sort((a, b) => {
+      const av = getVal(a, sortCol), bv = getVal(b, sortCol);
+      const mul = sortDir === 'asc' ? 1 : -1;
+      if (av < bv) return -1 * mul;
+      if (av > bv) return  1 * mul;
+      return 0;
+    });
 
+    document.getElementById('accts-label').textContent = 'Accounts (' + list.length + ')';
+
+    // Update header arrows
+    document.querySelectorAll('#accts-table thead th.sortable').forEach(th => {
+      const col = th.dataset.col;
+      th.classList.remove('sort-asc','sort-desc');
+      const icon = th.querySelector('.sort-icon');
+      if (col === sortCol) {
+        th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+        icon.textContent = sortDir === 'asc' ? '↑' : '↓';
+      } else {
+        icon.textContent = '↕';
+      }
+    });
+
+    const tbody = document.getElementById('accts-body');
     if (!list.length) {
       tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:48px;color:#475569">No accounts found.</td></tr>';
       return;
@@ -391,7 +662,31 @@ app.get('/accounts', (req, res) => {
     }).join('');
   }
 
-  function debounceLoad() { clearTimeout(searchTimer); searchTimer = setTimeout(renderTable, 200); }
+  function debounceRender() { clearTimeout(searchTimer); searchTimer = setTimeout(renderTable, 200); }
+
+  // Sort header clicks
+  document.querySelectorAll('#accts-table thead th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (sortCol === col) {
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortCol = col;
+        sortDir = ['topIntentScore','peopleCount','totalVisits','totalAdClicks','lastSeenAt'].includes(col) ? 'desc' : 'asc';
+      }
+      renderTable();
+    });
+  });
+
+  // Tier filter buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTier = btn.dataset.tier;
+      renderTable();
+    });
+  });
 
   async function refresh() {
     try {
@@ -403,15 +698,6 @@ app.get('/accounts', (req, res) => {
       b.style.display = 'block'; b.textContent = 'Failed to load: ' + e.message;
     }
   }
-
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeTier = btn.dataset.tier;
-      renderTable();
-    });
-  });
 
   refresh();
   setInterval(refresh, 30000);
@@ -453,9 +739,17 @@ app.get('/account', async (req, res) => {
 
   const escStr = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/`/g,'&#96;');
 
+  // Build top pages chart data
+  const pageMap = {};
+  contacts.forEach(c => (c.pagesVisited||[]).forEach(p => {
+    const path = p.url.replace(/^https?:\/\/[^/]+/, '') || '/';
+    pageMap[path] = (pageMap[path]||0) + 1;
+  }));
+  const topPages = Object.entries(pageMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
   const pageBody = `
 <style>
-  .page { max-width:1160px; margin:0 auto; padding:0 32px 64px; }
+  .page { max-width:1200px; margin:0 auto; padding:0 32px 64px; }
 
   nav { padding:16px 0 0; display:flex; align-items:center; gap:8px; font-size:13px; color:#475569; }
   nav a { color:#6366f1; } nav a:hover { text-decoration:underline; }
@@ -474,13 +768,21 @@ app.get('/account', async (req, res) => {
   .stat .lbl { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.7px; color:#64748b; margin-bottom:6px; }
   .stat .val { font-size:30px; font-weight:700; color:#f1f5f9; line-height:1; }
 
-  .columns { display:grid; grid-template-columns:1fr 360px; gap:24px; padding-top:28px; }
+  /* Dashboard row */
+  .acct-dash { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:24px 0; border-bottom:1px solid #1e293b; }
+  .dash-card { background:#1e293b; border:1px solid #334155; border-radius:12px; padding:16px 20px; }
+  .dash-title { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.7px; color:#64748b; margin-bottom:14px; }
+
+  .columns { display:grid; grid-template-columns:1fr 340px; gap:24px; padding-top:28px; }
 
   .section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.7px; color:#475569; margin-bottom:14px; }
 
   /* People table on left */
   .people-table { width:100%; border-collapse:collapse; font-size:13px; }
-  .people-table thead th { text-align:left; padding:8px 12px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; color:#475569; border-bottom:1px solid #1e293b; }
+  .people-table thead th { text-align:left; padding:8px 12px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; color:#475569; border-bottom:1px solid #1e293b; white-space:nowrap; user-select:none; }
+  .people-table thead th.sortable { cursor:pointer; }
+  .people-table thead th.sortable:hover { color:#94a3b8; }
+  .people-table thead th.sort-asc, .people-table thead th.sort-desc { color:#818cf8; }
   .people-table tbody tr { border-bottom:1px solid #1e293b; transition:background .1s; cursor:pointer; }
   .people-table tbody tr:hover { background:#1e293b; }
   .people-table tbody td { padding:12px 12px; vertical-align:middle; }
@@ -507,6 +809,15 @@ app.get('/account', async (req, res) => {
   .tl-label { font-size:12px; color:#cbd5e1; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .tl-person { font-size:11px; color:#64748b; margin-top:2px; }
   .tl-time { font-size:11px; color:#475569; flex-shrink:0; padding-top:2px; }
+
+  /* bar list reuse */
+  .bar-list { display:flex; flex-direction:column; gap:8px; }
+  .bar-item { display:flex; flex-direction:column; gap:4px; }
+  .bar-item-header { display:flex; justify-content:space-between; font-size:12px; }
+  .bar-item-label { color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px; }
+  .bar-item-val { color:#e2e8f0; font-weight:600; flex-shrink:0; margin-left:8px; }
+  .bar-track { height:4px; background:#0f172a; border-radius:99px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:99px; background:#6366f1; }
 </style>
 
 <div class="page">
@@ -543,22 +854,60 @@ app.get('/account', async (req, res) => {
     <div class="stat"><div class="lbl">Top Score</div><div class="val">${topScore}</div></div>
   </div>
 
+  <!-- Account-level dashboard -->
+  <div class="acct-dash">
+    <div class="dash-card">
+      <div class="dash-title">Top Pages Visited</div>
+      <div class="bar-list" id="top-pages">
+        ${topPages.length === 0
+          ? '<div style="font-size:12px;color:#475569">No page visits recorded.</div>'
+          : (() => {
+              const maxP = topPages[0][1];
+              return topPages.map(([path, cnt]) =>
+                `<div class="bar-item">
+                  <div class="bar-item-header"><span class="bar-item-label" title="${escStr(path)}">${escStr(path)}</span><span class="bar-item-val">${cnt}</span></div>
+                  <div class="bar-track"><div class="bar-fill" style="width:${Math.round(cnt/maxP*100)}%"></div></div>
+                </div>`
+              ).join('');
+            })()
+        }
+      </div>
+    </div>
+    <div class="dash-card">
+      <div class="dash-title">People by Score</div>
+      <div class="bar-list">
+        ${(() => {
+            const maxS = contacts[0]?.intentScore || 1;
+            return contacts.slice(0,8).map(c => {
+              const name = [c.firstName, c.lastName].filter(Boolean).join(' ') || c.fullName || c.email || '—';
+              const tier = c.intentTier || 'cold';
+              const barColor = tier === 'hot' ? '#ef4444' : tier === 'warm' ? '#f59e0b' : '#3b82f6';
+              return `<div class="bar-item">
+                <div class="bar-item-header"><span class="bar-item-label" title="${escStr(name)}">${escStr(name)}</span><span class="bar-item-val" style="color:${barColor}">${c.intentScore}</span></div>
+                <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.intentScore/maxS*100)}%;background:${barColor}"></div></div>
+              </div>`;
+            }).join('');
+          })()
+        }
+      </div>
+    </div>
+  </div>
+
   <div class="columns">
 
     <div>
       <div class="section-title">People (${contacts.length}) — click to expand</div>
-      <table class="people-table">
+      <table class="people-table" id="people-table">
         <thead>
           <tr>
-            <th>Person</th>
-            <th>Title</th>
-            <th>Score</th>
-            <th>Tier</th>
-            <th>Visits</th>
-            <th>Last Seen</th>
+            <th class="sortable sort-desc" data-col="intentScore">Score <span class="sort-icon">↓</span></th>
+            <th class="sortable" data-col="name">Person <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-col="jobTitle">Title <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-col="visitCount">Visits <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-col="lastSeenAt">Last Seen <span class="sort-icon">↕</span></th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="people-body">
           ${contacts.map((c, i) => {
             const name   = [c.firstName, c.lastName].filter(Boolean).join(' ') || c.fullName || '—';
             const tier   = c.intentTier || 'cold';
@@ -569,22 +918,21 @@ app.get('/account', async (req, res) => {
 
             return `<tr onclick="toggleDetail(${i})">
               <td>
-                <div class="person-name">${escStr(name)}</div>
-                ${c.email ? `<div class="person-sub">${escStr(c.email)}</div>` : ''}
-              </td>
-              <td style="font-size:12px;color:#94a3b8">${escStr(c.jobTitle||'—')}</td>
-              <td>
                 <div class="score-wrap">
                   <div class="score-bar-bg"><div class="score-bar ${tier}" style="width:${c.intentScore}%"></div></div>
                   <span class="score-num ${tier}">${c.intentScore}</span>
                 </div>
               </td>
-              <td><span class="tier-badge ${tier}">${tier}</span></td>
+              <td>
+                <div class="person-name">${escStr(name)}</div>
+                ${c.email ? `<div class="person-sub">${escStr(c.email)}</div>` : ''}
+              </td>
+              <td style="font-size:12px;color:#94a3b8">${escStr(c.jobTitle||'—')}</td>
               <td style="font-size:12px;color:#64748b">${c.visitCount||0}</td>
               <td style="font-size:12px;color:#64748b" data-iso="${c.lastSeenAt||''}"></td>
             </tr>
             <tr class="detail-row" id="detail-${i}">
-              <td class="detail-cell" colspan="6">
+              <td class="detail-cell" colspan="5">
                 ${events.length === 0
                   ? '<span style="font-size:12px;color:#475569">No engagement recorded.</span>'
                   : `<div class="event-list">${events.map(ev => `
@@ -631,6 +979,94 @@ app.get('/account', async (req, res) => {
   function toggleDetail(i) {
     const row = document.getElementById('detail-' + i);
     row.classList.toggle('open');
+  }
+
+  // Sortable people table on account detail
+  let peopleSortCol = 'intentScore', peopleSortDir = 'desc';
+  const rawContacts = ${JSON.stringify(contacts.map(c => ({
+    id: c.id,
+    firstName: c.firstName, lastName: c.lastName, fullName: c.fullName,
+    email: c.email, jobTitle: c.jobTitle,
+    intentScore: c.intentScore, intentTier: c.intentTier,
+    visitCount: c.visitCount, lastSeenAt: c.lastSeenAt,
+    pagesVisited: c.pagesVisited, adEvents: c.adEvents,
+  })))};
+
+  document.querySelectorAll('#people-table thead th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (peopleSortCol === col) {
+        peopleSortDir = peopleSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        peopleSortCol = col;
+        peopleSortDir = ['intentScore','visitCount','lastSeenAt'].includes(col) ? 'desc' : 'asc';
+      }
+      sortPeopleTable();
+    });
+  });
+
+  function getPeopleVal(c, col) {
+    switch(col) {
+      case 'name':        return ((c.firstName||'') + ' ' + (c.lastName||'')).trim().toLowerCase();
+      case 'jobTitle':    return (c.jobTitle||'').toLowerCase();
+      case 'intentScore': return c.intentScore || 0;
+      case 'visitCount':  return c.visitCount || 0;
+      case 'lastSeenAt':  return c.lastSeenAt || '';
+      default:            return '';
+    }
+  }
+
+  function sortPeopleTable() {
+    const sorted = rawContacts.slice().sort((a, b) => {
+      const av = getPeopleVal(a, peopleSortCol), bv = getPeopleVal(b, peopleSortCol);
+      const mul = peopleSortDir === 'asc' ? 1 : -1;
+      if (av < bv) return -1 * mul;
+      if (av > bv) return  1 * mul;
+      return 0;
+    });
+
+    document.querySelectorAll('#people-table thead th.sortable').forEach(th => {
+      th.classList.remove('sort-asc','sort-desc');
+      const icon = th.querySelector('.sort-icon');
+      if (th.dataset.col === peopleSortCol) {
+        th.classList.add(peopleSortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+        icon.textContent = peopleSortDir === 'asc' ? '↑' : '↓';
+      } else {
+        icon.textContent = '↕';
+      }
+    });
+
+    const tbody = document.getElementById('people-body');
+    tbody.innerHTML = sorted.map((c, i) => {
+      const name   = [c.firstName, c.lastName].filter(Boolean).join(' ') || c.fullName || '—';
+      const tier   = c.intentTier || 'cold';
+      const events = [
+        ...(c.pagesVisited || []).map(p => ({ kind: 'page',  label: 'Visited ' + (p.url.replace(/^https?:\\/\\/[^\\/]+/, '')||'/'), time: p.visitedAt })),
+        ...(c.adEvents     || []).map(e => ({ kind: e.type,  label: (e.type==='click'?'Clicked':'Saw')+' ad'+(e.campaignName?' · '+e.campaignName:''), time: e.occurredAt })),
+      ].sort((a, b) => new Date(b.time) - new Date(a.time));
+
+      return '<tr onclick="toggleDetail2(' + i + ')">' +
+        '<td><div class="score-wrap"><div class="score-bar-bg"><div class="score-bar ' + tier + '" style="width:' + c.intentScore + '%"></div></div><span class="score-num ' + tier + '">' + c.intentScore + '</span></div></td>' +
+        '<td><div class="person-name">' + esc(name) + '</div>' + (c.email ? '<div class="person-sub">' + esc(c.email) + '</div>' : '') + '</td>' +
+        '<td style="font-size:12px;color:#94a3b8">' + esc(c.jobTitle||'—') + '</td>' +
+        '<td style="font-size:12px;color:#64748b">' + (c.visitCount||0) + '</td>' +
+        '<td style="font-size:12px;color:#64748b">' + relativeTime(c.lastSeenAt) + '</td>' +
+        '</tr>' +
+        '<tr class="detail-row" id="detail2-' + i + '">' +
+        '<td class="detail-cell" colspan="5">' +
+        (events.length === 0
+          ? '<span style="font-size:12px;color:#475569">No engagement recorded.</span>'
+          : '<div class="event-list">' + events.map(ev =>
+              '<div class="event-item"><div class="dot ' + ev.kind + '"></div><div class="event-text">' + esc(ev.label) + '</div><div class="event-time">' + relativeTime(ev.time) + '</div></div>'
+            ).join('') + '</div>'
+        ) +
+        '</td></tr>';
+    }).join('');
+  }
+
+  function toggleDetail2(i) {
+    const row = document.getElementById('detail2-' + i);
+    if (row) row.classList.toggle('open');
   }
 </script>
 `;
