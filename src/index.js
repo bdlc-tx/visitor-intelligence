@@ -121,6 +121,7 @@ app.get('/', (req, res) => {
   <h1>Visitor Intelligence</h1>
   <span class="badge" id="last-updated">Loading…</span>
   <div class="refresh-info">Auto-refreshes every 30s</div>
+  <a href="/admin" style="margin-left:16px;font-size:12px;color:#64748b;border:1px solid #334155;padding:3px 12px;border-radius:99px;background:#1e293b;" onmouseover="this.style.color='#f1f5f9'" onmouseout="this.style.color='#64748b'">⚙ Admin</a>
 </header>
 
 <div id="error-banner"></div>
@@ -459,6 +460,411 @@ app.get('/account', (req, res) => {
   });
   document.getElementById('first-seen-label').textContent = 'First seen ' + relativeTime('${firstSeen}');
   document.getElementById('last-seen-label').textContent  = 'Last seen '  + relativeTime('${lastSeen}');
+</script>
+</body>
+</html>`);
+});
+
+// ─── Admin  GET /admin ───────────────────────────────────────────────────────
+
+app.get('/admin', (req, res) => {
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
+  const proto = req.headers['x-forwarded-proto'] || 'http';
+  const baseUrl = `${proto}://${host}`;
+
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Visitor Intelligence</title>
+<style>
+  ${SHARED_STYLES}
+
+  .page { max-width: 860px; margin: 0 auto; padding: 0 32px 64px; }
+
+  nav { padding: 20px 0 0; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #475569; }
+  nav a { color: #6366f1; }
+  nav a:hover { text-decoration: underline; }
+  nav .sep { color: #334155; }
+
+  .page-title { font-size: 22px; font-weight: 800; color: #f8fafc; letter-spacing: -0.4px; margin: 24px 0 4px; }
+  .page-sub   { font-size: 13px; color: #64748b; margin-bottom: 28px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid #1e293b; margin-bottom: 28px; }
+  .tab-btn { background: none; border: none; padding: 8px 16px; font-size: 13px; font-weight: 500; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s; font-family: inherit; }
+  .tab-btn:hover { color: #94a3b8; }
+  .tab-btn.active { color: #f1f5f9; border-bottom-color: #6366f1; font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Cards */
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 22px 24px; margin-bottom: 16px; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .card-title { font-size: 15px; font-weight: 700; color: #f1f5f9; display: flex; align-items: center; gap: 10px; }
+  .card-logo { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; flex-shrink: 0; }
+  .logo-rb2b   { background: #1e1b4b; color: #a5b4fc; border: 1px solid #312e81; }
+  .logo-vector { background: #0d2d1a; color: #6ee7b7; border: 1px solid #064e3b; }
+  .logo-system { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .status-dot.ready   { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+  .status-dot.waiting { background: #f59e0b; }
+  .status-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 99px; }
+  .status-badge.ready   { background: #052e16; color: #4ade80; border: 1px solid #14532d; }
+  .status-badge.waiting { background: #451a03; color: #fbbf24; border: 1px solid #78350f; }
+
+  .card-desc { font-size: 13px; color: #94a3b8; line-height: 1.6; margin-bottom: 18px; }
+
+  /* Webhook URL field */
+  .url-field { display: flex; align-items: center; gap: 8px; }
+  .url-box { flex: 1; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 9px 14px; font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace; color: #e2e8f0; overflow-x: auto; white-space: nowrap; }
+  .copy-btn { flex-shrink: 0; background: #334155; border: 1px solid #475569; border-radius: 8px; color: #e2e8f0; font-size: 12px; padding: 8px 14px; cursor: pointer; font-family: inherit; transition: all 0.15s; white-space: nowrap; }
+  .copy-btn:hover { background: #475569; color: #f8fafc; }
+  .copy-btn.copied { background: #052e16; border-color: #14532d; color: #4ade80; }
+
+  /* Steps */
+  .steps { list-style: none; counter-reset: step-counter; display: flex; flex-direction: column; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px solid #334155; }
+  .steps li { counter-increment: step-counter; display: flex; align-items: flex-start; gap: 12px; font-size: 13px; color: #94a3b8; line-height: 1.5; }
+  .steps li::before { content: counter(step-counter); min-width: 22px; height: 22px; border-radius: 50%; background: #334155; color: #94a3b8; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .steps a { color: #818cf8; }
+  .steps a:hover { text-decoration: underline; }
+
+  /* Test button */
+  .test-btn { margin-top: 18px; padding-top: 18px; border-top: 1px solid #334155; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .btn { border: none; border-radius: 8px; font-size: 13px; font-weight: 600; padding: 8px 18px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+  .btn-primary  { background: #6366f1; color: #fff; }
+  .btn-primary:hover  { background: #4f46e5; }
+  .btn-secondary { background: #1e293b; border: 1px solid #334155; color: #94a3b8; }
+  .btn-secondary:hover { border-color: #475569; color: #f1f5f9; }
+  .test-result { font-size: 12px; font-family: monospace; color: #64748b; }
+  .test-result.ok  { color: #4ade80; }
+  .test-result.err { color: #f87171; }
+
+  /* Settings table */
+  .settings-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .settings-table th { text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: #475569; padding: 8px 12px; border-bottom: 1px solid #334155; }
+  .settings-table td { padding: 10px 12px; color: #94a3b8; border-bottom: 1px solid #1e293b; vertical-align: middle; }
+  .settings-table tr:last-child td { border-bottom: none; }
+  .settings-table td:first-child { color: #cbd5e1; font-weight: 500; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #0f172a; border: 1px solid #334155; color: #94a3b8; }
+
+  /* Deployment info */
+  .info-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #1e293b; font-size: 13px; }
+  .info-row:last-child { border-bottom: none; }
+  .info-key { color: #64748b; }
+  .info-val { color: #e2e8f0; font-family: monospace; font-size: 12px; }
+  .info-val a { color: #818cf8; }
+  .info-val a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <nav>
+    <a href="/">← Visitor Intelligence</a>
+    <span class="sep">/</span>
+    <span>Admin</span>
+  </nav>
+
+  <div class="page-title">Admin</div>
+  <div class="page-sub">Configure integrations, webhooks, and system settings.</div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="integrations">Integrations</button>
+    <button class="tab-btn" data-tab="scoring">Intent Scoring</button>
+    <button class="tab-btn" data-tab="system">System</button>
+  </div>
+
+  <!-- ── Integrations ── -->
+  <div class="tab-panel active" id="tab-integrations">
+
+    <!-- RB2B -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="card-logo logo-rb2b">R</div>
+          RB2B — Visitor Identification
+        </div>
+        <span class="status-badge ready"><span class="status-dot ready"></span>Ready</span>
+      </div>
+      <div class="card-desc">
+        RB2B de-anonymizes your website visitors and identifies them by name, LinkedIn profile, job title, and company. Paste the webhook URL below into your RB2B dashboard under <strong style="color:#e2e8f0">Integrations → Webhook</strong>.
+      </div>
+      <div class="url-field">
+        <div class="url-box" id="rb2b-url">${baseUrl}/webhooks/rb2b</div>
+        <button class="copy-btn" onclick="copyUrl('rb2b-url', this)">Copy</button>
+      </div>
+      <ol class="steps">
+        <li>Go to <a href="https://app.rb2b.com/integrations/webhook" target="_blank">app.rb2b.com → Integrations → Webhook</a></li>
+        <li>Paste the URL above and click <strong style="color:#e2e8f0">Save</strong></li>
+        <li>Optionally enable <strong style="color:#e2e8f0">Send repeat visitor data</strong> to track return visits</li>
+        <li>Click <strong style="color:#e2e8f0">Send a Test Event</strong> in RB2B, then use the button below to verify</li>
+      </ol>
+      <div class="test-btn">
+        <button class="btn btn-primary" onclick="sendTest('rb2b')">Send test event</button>
+        <span class="test-result" id="test-rb2b"></span>
+      </div>
+    </div>
+
+    <!-- Vector -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="card-logo logo-vector">V</div>
+          Vector — Ad Engagement
+        </div>
+        <span class="status-badge ready"><span class="status-dot ready"></span>Ready</span>
+      </div>
+      <div class="card-desc">
+        Vector tracks LinkedIn ad clicks and impressions and ties them back to individual contacts. Configure your Vector account to POST engagement events to the URL below.
+      </div>
+      <div class="url-field">
+        <div class="url-box" id="vector-url">${baseUrl}/webhooks/vector</div>
+        <button class="copy-btn" onclick="copyUrl('vector-url', this)">Copy</button>
+      </div>
+      <ol class="steps">
+        <li>In your Vector dashboard, navigate to <strong style="color:#e2e8f0">Settings → Webhooks</strong></li>
+        <li>Add a new webhook endpoint with the URL above</li>
+        <li>Select event types: <strong style="color:#e2e8f0">ad_click</strong> and <strong style="color:#e2e8f0">ad_impression</strong></li>
+        <li>Save and use the button below to send a test event</li>
+      </ol>
+      <div class="test-btn">
+        <button class="btn btn-primary" onclick="sendTest('vector')">Send test event</button>
+        <span class="test-result" id="test-vector"></span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Intent Scoring ── -->
+  <div class="tab-panel" id="tab-scoring">
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="card-logo logo-system">📄</div>
+          Page Signal
+        </div>
+        <span class="pill">max 40 pts</span>
+      </div>
+      <table class="settings-table">
+        <thead><tr><th>URL contains</th><th>Points</th></tr></thead>
+        <tbody>
+          <tr><td>/pricing</td><td>40</td></tr>
+          <tr><td>/demo, /book-a-demo, /request-demo</td><td>40</td></tr>
+          <tr><td>/contact</td><td>35</td></tr>
+          <tr><td>/case-studies, /customers</td><td>25</td></tr>
+          <tr><td>/features, /product, /solutions</td><td>20</td></tr>
+          <tr><td>/about</td><td>10</td></tr>
+          <tr><td>/blog/</td><td>8</td></tr>
+          <tr><td>Any other page</td><td>5</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="card-logo logo-system">🔁</div>
+          Visit Frequency
+        </div>
+        <span class="pill">max 20 pts</span>
+      </div>
+      <table class="settings-table">
+        <thead><tr><th>Visit count</th><th>Points</th></tr></thead>
+        <tbody>
+          <tr><td>1 visit</td><td>5</td></tr>
+          <tr><td>2–3 visits</td><td>10</td></tr>
+          <tr><td>4–6 visits</td><td>15</td></tr>
+          <tr><td>7+ visits</td><td>20</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="card-logo logo-system">📣</div>
+          Ad Engagement
+        </div>
+        <span class="pill">max 25 pts</span>
+      </div>
+      <table class="settings-table">
+        <thead><tr><th>Signal</th><th>Points</th></tr></thead>
+        <tbody>
+          <tr><td>Per ad click (up to 3)</td><td>8 each</td></tr>
+          <tr><td>Any impression</td><td>1</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="card-logo logo-system">👤</div>
+          Job Title
+        </div>
+        <span class="pill">max 15 pts</span>
+      </div>
+      <table class="settings-table">
+        <thead><tr><th>Title contains</th><th>Points</th></tr></thead>
+        <tbody>
+          <tr><td>CEO, Founder, Co-Founder, President, Owner</td><td>15</td></tr>
+          <tr><td>CTO, CMO, CFO, COO, CPO, CRO, CHRO</td><td>14</td></tr>
+          <tr><td>VP, Vice President</td><td>13</td></tr>
+          <tr><td>Director</td><td>11</td></tr>
+          <tr><td>Head of, Lead</td><td>9</td></tr>
+          <tr><td>Manager</td><td>6</td></tr>
+          <tr><td>Engineer, Developer, Designer</td><td>3</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-logo logo-system">🎯</div>Score Tiers</div>
+      </div>
+      <table class="settings-table">
+        <thead><tr><th>Score range</th><th>Tier</th></tr></thead>
+        <tbody>
+          <tr><td>60–100</td><td><span class="tier-badge hot">hot</span></td></tr>
+          <tr><td>30–59</td><td><span class="tier-badge warm">warm</span></td></tr>
+          <tr><td>0–29</td><td><span class="tier-badge cold">cold</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- ── System ── -->
+  <div class="tab-panel" id="tab-system">
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-logo logo-system">🚀</div>Deployment</div>
+      </div>
+      <div class="info-row"><span class="info-key">Live URL</span><span class="info-val"><a href="${baseUrl}" target="_blank">${baseUrl}</a></span></div>
+      <div class="info-row"><span class="info-key">GitHub</span><span class="info-val"><a href="https://github.com/bdlc-tx/visitor-intelligence" target="_blank">github.com/bdlc-tx/visitor-intelligence</a></span></div>
+      <div class="info-row"><span class="info-key">Runtime</span><span class="info-val">Node.js ${process.version} · Express</span></div>
+      <div class="info-row"><span class="info-key">Storage</span><span class="info-val">In-memory (resets on cold start)</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-logo logo-system">🔗</div>Endpoints</div>
+      </div>
+      <table class="settings-table">
+        <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill">POST</span></td><td>/webhooks/rb2b</td><td>RB2B visitor identification</td></tr>
+          <tr><td><span class="pill">POST</span></td><td>/webhooks/vector</td><td>Vector ad engagement</td></tr>
+          <tr><td><span class="pill">GET</span></td><td>/api/contacts</td><td>Paginated contact list</td></tr>
+          <tr><td><span class="pill">GET</span></td><td>/api/stats</td><td>Aggregate dashboard stats</td></tr>
+          <tr><td><span class="pill">GET</span></td><td>/api/accounts</td><td>Account-level aggregates</td></tr>
+          <tr><td><span class="pill">GET</span></td><td>/account</td><td>Company profile page</td></tr>
+          <tr><td><span class="pill">GET</span></td><td>/admin</td><td>This page</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-logo logo-system">⚠</div>Data</div>
+      </div>
+      <div class="card-desc" style="margin-bottom:0">
+        The contact store is <strong style="color:#e2e8f0">in-memory</strong> — data does not persist across server restarts or Vercel cold starts. To add persistence, swap <code style="font-size:12px;background:#0f172a;padding:1px 6px;border-radius:4px;border:1px solid #334155">src/store/contacts.js</code> with a Vercel KV (Redis) adapter.
+      </div>
+      <div class="test-btn" style="margin-top:14px;padding-top:14px">
+        <button class="btn btn-secondary" onclick="checkHealth()">Check health</button>
+        <span class="test-result" id="test-health"></span>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  ${SHARED_JS}
+
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Copy URL
+  function copyUrl(elId, btn) {
+    const text = document.getElementById(elId).textContent.trim();
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+
+  // Send test events
+  async function sendTest(source) {
+    const el = document.getElementById('test-' + source);
+    el.className = 'test-result';
+    el.textContent = 'Sending…';
+    try {
+      let body, url;
+      if (source === 'rb2b') {
+        url = '/webhooks/rb2b';
+        body = {
+          'LinkedIn URL': 'https://www.linkedin.com/in/test-user/',
+          'First Name': 'Test', 'Last Name': 'User',
+          'Title': 'VP of Engineering', 'Company Name': 'Test Co',
+          'Business Email': 'test@testco.com', 'Website': 'https://testco.com',
+          'Captured URL': window.location.origin + '/pricing',
+          'Seen At': new Date().toISOString()
+        };
+      } else {
+        url = '/webhooks/vector';
+        body = {
+          event: 'ad_click',
+          person: { email: 'test@testco.com' },
+          campaign: { id: 'test_campaign', name: 'Admin Test', adId: 'ad_test' },
+          engagement: { type: 'click', occurredAt: new Date().toISOString() }
+        };
+      }
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (res.ok) {
+        el.className = 'test-result ok';
+        el.textContent = '✓ Received · score ' + data.intentScore + ' (' + data.intentTier + ') · ' + (data.isNewContact ? 'new contact' : 'merged');
+      } else {
+        el.className = 'test-result err';
+        el.textContent = '✗ ' + (data.error || res.status);
+      }
+    } catch(e) {
+      el.className = 'test-result err';
+      el.textContent = '✗ ' + e.message;
+    }
+  }
+
+  // Health check
+  async function checkHealth() {
+    const el = document.getElementById('test-health');
+    el.className = 'test-result';
+    el.textContent = 'Checking…';
+    try {
+      const [statsRes] = await Promise.all([fetch('/api/stats')]);
+      const stats = await statsRes.json();
+      el.className = 'test-result ok';
+      el.textContent = '✓ Healthy · ' + stats.totalContacts + ' contacts in store · uptime ' + Math.round(performance.now()/1000) + 's';
+    } catch(e) {
+      el.className = 'test-result err';
+      el.textContent = '✗ ' + e.message;
+    }
+  }
 </script>
 </body>
 </html>`);
