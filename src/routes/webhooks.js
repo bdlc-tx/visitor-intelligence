@@ -6,14 +6,7 @@ const store = require('../store/contacts');
 const router = Router();
 
 // POST /webhooks/rb2b
-// Receives RB2B visitor identification payloads.
-// Accepts both RB2B's native flat format (spaced keys) and our own
-// nested format (for testing / other senders).
-//
-// RB2B native flat payload fields:
-//   "LinkedIn URL", "First Name", "Last Name", "Title", "Company Name",
-//   "Business Email", "Website", "Captured URL", "Seen At", "Referrer"
-router.post('/rb2b', (req, res) => {
+router.post('/rb2b', async (req, res) => {
   try {
     const payload = req.body;
 
@@ -21,9 +14,6 @@ router.post('/rb2b', (req, res) => {
       return res.status(400).json({ error: 'Request body must be a JSON object' });
     }
 
-    // --- Detect and normalise RB2B's native flat format ---
-    // RB2B sends a flat object with space-separated keys like "LinkedIn URL".
-    // We remap to our internal nested format before validation.
     let person, pageVisit;
 
     if (payload['LinkedIn URL'] || payload['Business Email']) {
@@ -43,7 +33,7 @@ router.post('/rb2b', (req, res) => {
         ? { url: payload['Captured URL'], visitedAt: payload['Seen At'] || null, referrer: payload['Referrer'] || null }
         : null;
     } else {
-      // Our own nested test format
+      // Nested test format
       person    = payload.person;
       pageVisit = payload.pageVisit;
     }
@@ -58,7 +48,7 @@ router.post('/rb2b', (req, res) => {
       });
     }
 
-    const contact = store.upsertContact({
+    const { contact, isNew } = await store.upsertContact({
       source: 'rb2b',
       email: person.email || null,
       linkedinUrl: person.linkedinUrl || null,
@@ -76,7 +66,7 @@ router.post('/rb2b', (req, res) => {
       contactId: contact.id,
       intentScore: contact.intentScore,
       intentTier: contact.intentTier,
-      isNewContact: contact.createdAt === contact.updatedAt,
+      isNewContact: isNew,
     });
   } catch (err) {
     console.error('[webhooks/rb2b] Unexpected error:', err);
@@ -85,8 +75,7 @@ router.post('/rb2b', (req, res) => {
 });
 
 // POST /webhooks/vector
-// Receives Vector ad engagement payloads
-router.post('/vector', (req, res) => {
+router.post('/vector', async (req, res) => {
   try {
     const payload = req.body;
 
@@ -125,7 +114,7 @@ router.post('/vector', (req, res) => {
       occurredAt: engagement.occurredAt || null,
     };
 
-    const contact = store.upsertContact({
+    const { contact, isNew } = await store.upsertContact({
       source: 'vector',
       email: person.email || null,
       linkedinUrl: person.linkedinUrl || null,
@@ -137,7 +126,7 @@ router.post('/vector', (req, res) => {
       contactId: contact.id,
       intentScore: contact.intentScore,
       intentTier: contact.intentTier,
-      isNewContact: contact.createdAt === contact.updatedAt,
+      isNewContact: isNew,
     });
   } catch (err) {
     console.error('[webhooks/vector] Unexpected error:', err);

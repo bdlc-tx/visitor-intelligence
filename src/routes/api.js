@@ -6,20 +6,12 @@ const store = require('../store/contacts');
 const router = Router();
 
 // GET /api/contacts
-// Query params:
-//   tier    - filter by intent tier: hot | warm | cold
-//   source  - filter by source: rb2b | vector
-//   sort    - field to sort by (default: intentScore)
-//   order   - asc | desc (default: desc)
-//   limit   - number of results per page (default: 50, max: 200)
-//   offset  - number of results to skip (default: 0)
-router.get('/contacts', (req, res) => {
+router.get('/contacts', async (req, res) => {
   try {
-    let contacts = store.getAll();
+    let contacts = await store.getAll();
 
     const { tier, source, sort = 'intentScore', order = 'desc', limit = '50', offset = '0' } = req.query;
 
-    // Filter by intent tier
     if (tier) {
       const validTiers = ['hot', 'warm', 'cold'];
       if (!validTiers.includes(tier)) {
@@ -28,7 +20,6 @@ router.get('/contacts', (req, res) => {
       contacts = contacts.filter((c) => c.intentTier === tier);
     }
 
-    // Filter by source
     if (source) {
       const validSources = ['rb2b', 'vector'];
       if (!validSources.includes(source)) {
@@ -37,7 +28,6 @@ router.get('/contacts', (req, res) => {
       contacts = contacts.filter((c) => c.sources.includes(source));
     }
 
-    // Sort
     const validSortFields = ['intentScore', 'visitCount', 'adClickCount', 'createdAt', 'updatedAt', 'lastSeenAt'];
     const sortField = validSortFields.includes(sort) ? sort : 'intentScore';
     const sortDir = order === 'asc' ? 1 : -1;
@@ -51,19 +41,11 @@ router.get('/contacts', (req, res) => {
     });
 
     const total = contacts.length;
-
-    // Paginate
     const limitNum = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
     const offsetNum = Math.max(parseInt(offset, 10) || 0, 0);
     const page = contacts.slice(offsetNum, offsetNum + limitNum);
 
-    return res.status(200).json({
-      total,
-      count: page.length,
-      limit: limitNum,
-      offset: offsetNum,
-      contacts: page,
-    });
+    return res.status(200).json({ total, count: page.length, limit: limitNum, offset: offsetNum, contacts: page });
   } catch (err) {
     console.error('[api/contacts] Unexpected error:', err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -71,10 +53,9 @@ router.get('/contacts', (req, res) => {
 });
 
 // GET /api/stats
-// Returns aggregated dashboard stats
-router.get('/stats', (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
-    const stats = store.getStats();
+    const stats = await store.getStats();
     return res.status(200).json(stats);
   } catch (err) {
     console.error('[api/stats] Unexpected error:', err);
@@ -83,12 +64,10 @@ router.get('/stats', (req, res) => {
 });
 
 // GET /api/accounts
-// Groups contacts by company, returns account-level aggregates
-router.get('/accounts', (req, res) => {
+router.get('/accounts', async (req, res) => {
   try {
-    const contacts = store.getAll();
+    const contacts = await store.getAll();
 
-    // Group by normalized company name
     const accountMap = {};
     for (const c of contacts) {
       const key = (c.company || '').trim().toLowerCase() || '__unknown__';
