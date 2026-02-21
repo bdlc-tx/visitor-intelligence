@@ -120,6 +120,23 @@ function shell(title, activeTab, body, extraStyles = '') {
   .bar-fill.hot  { background:#ef4444; }
   .bar-fill.warm { background:#f59e0b; }
 
+  /* ── Filter bar ── */
+  .filter-bar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:0 32px 12px; }
+  .filter-bar-left { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .filter-bar-right { display:flex; gap:6px; align-items:center; }
+  .filter-select { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:5px 10px; font-size:12px; color:#e2e8f0; font-family:inherit; outline:none; cursor:pointer; max-width:180px; }
+  .filter-select:focus { border-color:#6366f1; }
+  .filter-select option { background:#1e293b; }
+  .score-range-wrap { display:flex; align-items:center; gap:6px; }
+  .score-range-label { font-size:12px; color:#94a3b8; white-space:nowrap; }
+  input[type=range] { accent-color:#6366f1; width:80px; cursor:pointer; }
+  .chip { display:inline-flex; align-items:center; gap:5px; background:#1e1b4b; border:1px solid #312e81; color:#a5b4fc; font-size:11px; font-weight:600; padding:3px 8px; border-radius:99px; cursor:pointer; transition:all .15s; }
+  .chip:hover { background:#312e81; }
+  .chip-x { opacity:.7; font-size:10px; }
+  .chip:hover .chip-x { opacity:1; }
+  .clear-filters-btn { background:transparent; border:1px solid #334155; border-radius:8px; color:#64748b; font-size:12px; padding:4px 10px; cursor:pointer; font-family:inherit; transition:all .15s; }
+  .clear-filters-btn:hover { border-color:#f87171; color:#f87171; }
+
   /* ── Table base ── */
   .section-wrap { padding:0 32px 40px; }
   .section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
@@ -216,15 +233,35 @@ app.get('/', (req, res) => {
 </div>
 
 <div class="section-wrap">
-  <div class="section-header">
-    <span class="section-title" id="people-label">People</span>
-    <div class="filter-row">
+  <!-- Filter bar -->
+  <div class="filter-bar" id="filter-bar">
+    <div class="filter-bar-left">
       <input class="search-box" id="search" placeholder="Search name, company, email…" oninput="debounceRender()">
+      <select class="filter-select" id="f-title" onchange="renderTable()"><option value="">All Titles</option></select>
+      <select class="filter-select" id="f-company" onchange="renderTable()"><option value="">All Companies</option></select>
+      <select class="filter-select" id="f-source" onchange="renderTable()">
+        <option value="">All Sources</option>
+        <option value="rb2b">RB2B</option>
+        <option value="vector">Vector</option>
+      </select>
+      <div class="score-range-wrap">
+        <label class="score-range-label">Score ≥ <span id="score-min-val">0</span></label>
+        <input type="range" id="f-score-min" min="0" max="100" value="0" oninput="document.getElementById('score-min-val').textContent=this.value; renderTable()">
+      </div>
+    </div>
+    <div class="filter-bar-right">
       <button class="filter-btn active" data-tier="">All</button>
       <button class="filter-btn" data-tier="hot">🔥 Hot</button>
       <button class="filter-btn" data-tier="warm">⚡ Warm</button>
       <button class="filter-btn" data-tier="cold">❄ Cold</button>
     </div>
+  </div>
+  <!-- Active filter chips -->
+  <div id="active-chips" style="display:none;padding:0 32px 10px;gap:6px;flex-wrap:wrap;align-items:center"></div>
+
+  <div class="section-header" style="margin-top:4px">
+    <span class="section-title" id="people-label">People</span>
+    <button class="clear-filters-btn" id="clear-filters" onclick="clearAllFilters()" style="display:none">✕ Clear filters</button>
   </div>
   <table id="people-table">
     <thead>
@@ -253,8 +290,27 @@ app.get('/', (req, res) => {
   async function loadPeople() {
     const data = await fetch('/api/contacts?limit=200&sort=intentScore&order=desc').then(r => r.json());
     allPeople = data.contacts || [];
+    populateDropdowns(allPeople);
     buildDashboard(allPeople);
     renderTable();
+  }
+
+  function populateDropdowns(people) {
+    // Job titles — sorted by frequency desc
+    const titleMap = {};
+    people.forEach(p => { if (p.jobTitle) titleMap[p.jobTitle] = (titleMap[p.jobTitle]||0)+1; });
+    const titles = Object.entries(titleMap).sort((a,b)=>b[1]-a[1]).map(([t])=>t);
+    const titleSel = document.getElementById('f-title');
+    const prevTitle = titleSel.value;
+    titleSel.innerHTML = '<option value="">All Titles</option>' +
+      titles.map(t => \`<option value="\${esc(t)}" \${prevTitle===t?'selected':''}>\${esc(t)}</option>\`).join('');
+
+    // Companies — sorted alpha
+    const companies = [...new Set(people.map(p=>p.company).filter(Boolean))].sort();
+    const compSel = document.getElementById('f-company');
+    const prevComp = compSel.value;
+    compSel.innerHTML = '<option value="">All Companies</option>' +
+      companies.map(c => \`<option value="\${esc(c)}" \${prevComp===c?'selected':''}>\${esc(c)}</option>\`).join('');
   }
 
   async function loadStats() {
@@ -343,9 +399,18 @@ app.get('/', (req, res) => {
   }
 
   function renderTable() {
-    const q = (document.getElementById('search').value || '').toLowerCase();
+    const q         = (document.getElementById('search').value || '').toLowerCase();
+    const fTitle    = document.getElementById('f-title').value;
+    const fCompany  = document.getElementById('f-company').value;
+    const fSource   = document.getElementById('f-source').value;
+    const fScoreMin = parseInt(document.getElementById('f-score-min').value, 10) || 0;
+
     let list = allPeople.slice();
-    if (activeTier) list = list.filter(c => c.intentTier === activeTier);
+    if (activeTier)  list = list.filter(c => c.intentTier === activeTier);
+    if (fTitle)      list = list.filter(c => c.jobTitle === fTitle);
+    if (fCompany)    list = list.filter(c => c.company  === fCompany);
+    if (fSource)     list = list.filter(c => (c.sources||[]).includes(fSource));
+    if (fScoreMin>0) list = list.filter(c => (c.intentScore||0) >= fScoreMin);
     if (q) list = list.filter(c =>
       ((c.firstName||'') + ' ' + (c.lastName||'')).toLowerCase().includes(q) ||
       (c.fullName||'').toLowerCase().includes(q) ||
@@ -363,6 +428,30 @@ app.get('/', (req, res) => {
     });
 
     document.getElementById('people-label').textContent = 'People (' + list.length + ')';
+
+    // Render active filter chips
+    const chips = [];
+    if (activeTier) chips.push({ label: 'Tier: ' + activeTier, clear: () => { activeTier=''; document.querySelectorAll('.filter-btn').forEach(b=>{b.classList.remove('active'); if(!b.dataset.tier)b.classList.add('active');}); renderTable(); }});
+    if (fTitle)     chips.push({ label: 'Title: ' + fTitle,    clear: () => { document.getElementById('f-title').value=''; renderTable(); }});
+    if (fCompany)   chips.push({ label: 'Company: ' + fCompany,clear: () => { document.getElementById('f-company').value=''; renderTable(); }});
+    if (fSource)    chips.push({ label: 'Source: ' + fSource,  clear: () => { document.getElementById('f-source').value=''; renderTable(); }});
+    if (fScoreMin>0)chips.push({ label: 'Score ≥ ' + fScoreMin,clear: () => { document.getElementById('f-score-min').value=0; document.getElementById('score-min-val').textContent='0'; renderTable(); }});
+    if (q)          chips.push({ label: 'Search: "' + q + '"', clear: () => { document.getElementById('search').value=''; renderTable(); }});
+
+    const chipsEl = document.getElementById('active-chips');
+    const clearBtn = document.getElementById('clear-filters');
+    if (chips.length) {
+      chipsEl.style.display = 'flex'; chipsEl.style.flexWrap = 'wrap';
+      clearBtn.style.display = 'inline-flex';
+      chipsEl.innerHTML = '<span style="font-size:11px;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-right:2px">Filters:</span>' +
+        chips.map((ch, i) => \`<span class="chip" data-chip="\${i}">\${esc(ch.label)} <span class="chip-x">✕</span></span>\`).join('');
+      chipsEl.querySelectorAll('.chip').forEach((el, i) => {
+        el.addEventListener('click', () => chips[i].clear());
+      });
+    } else {
+      chipsEl.style.display = 'none';
+      clearBtn.style.display = 'none';
+    }
 
     // Update header arrows
     document.querySelectorAll('#people-table thead th.sortable').forEach(th => {
@@ -404,6 +493,18 @@ app.get('/', (req, res) => {
   }
 
   function debounceRender() { clearTimeout(searchTimer); searchTimer = setTimeout(renderTable, 200); }
+
+  function clearAllFilters() {
+    activeTier = '';
+    document.getElementById('search').value = '';
+    document.getElementById('f-title').value = '';
+    document.getElementById('f-company').value = '';
+    document.getElementById('f-source').value = '';
+    document.getElementById('f-score-min').value = 0;
+    document.getElementById('score-min-val').textContent = '0';
+    document.querySelectorAll('.filter-btn').forEach(b => { b.classList.remove('active'); if (!b.dataset.tier) b.classList.add('active'); });
+    renderTable();
+  }
 
   // Sort header clicks
   document.querySelectorAll('#people-table thead th.sortable').forEach(th => {
