@@ -86,6 +86,46 @@ app.get('/', (req, res) => {
   #empty-state p { margin-top: 8px; font-size: 13px; }
 
   #error-banner { display: none; margin: 0 32px 16px; padding: 12px 16px; background: #450a0a; border: 1px solid #7f1d1d; border-radius: 8px; color: #fca5a5; font-size: 13px; }
+
+  .company-link { color: #64748b; font-size: 12px; margin-top: 2px; cursor: pointer; text-decoration: none; background: none; border: none; padding: 0; font-family: inherit; }
+  .company-link:hover { color: #818cf8; text-decoration: underline; }
+
+  /* Drawer overlay */
+  #drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; }
+  #drawer-overlay.open { display: block; }
+
+  /* Drawer panel */
+  #drawer { position: fixed; top: 0; right: -520px; width: 520px; height: 100vh; background: #0f172a; border-left: 1px solid #334155; z-index: 101; overflow-y: auto; transition: right 0.25s ease; display: flex; flex-direction: column; }
+  #drawer.open { right: 0; }
+
+  #drawer-header { padding: 24px 24px 0; display: flex; align-items: flex-start; justify-content: space-between; flex-shrink: 0; }
+  #drawer-title { font-size: 18px; font-weight: 700; color: #f1f5f9; }
+  #drawer-domain { font-size: 12px; color: #64748b; margin-top: 3px; }
+  #drawer-close { background: none; border: 1px solid #334155; border-radius: 6px; color: #94a3b8; cursor: pointer; font-size: 16px; line-height: 1; padding: 4px 8px; }
+  #drawer-close:hover { border-color: #475569; color: #f1f5f9; }
+
+  #drawer-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 20px 24px 0; flex-shrink: 0; }
+  .drawer-stat { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px 14px; }
+  .drawer-stat .label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: #64748b; margin-bottom: 4px; }
+  .drawer-stat .value { font-size: 22px; font-weight: 700; color: #f1f5f9; line-height: 1; }
+
+  #drawer-body { padding: 20px 24px 32px; flex: 1; }
+  #drawer-body h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: #475569; margin-bottom: 12px; }
+
+  .person-card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+  .person-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .person-name { font-weight: 600; color: #f1f5f9; font-size: 13px; }
+  .person-title { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  .person-email { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+  .engagement-list { border-top: 1px solid #334155; padding-top: 10px; margin-top: 2px; }
+  .engagement-item { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; font-size: 12px; color: #94a3b8; }
+  .engagement-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+  .engagement-dot.page { background: #6366f1; }
+  .engagement-dot.click { background: #ef4444; }
+  .engagement-dot.impression { background: #f59e0b; }
+  .engagement-text { flex: 1; line-height: 1.4; }
+  .engagement-time { color: #475569; font-size: 11px; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -97,6 +137,28 @@ app.get('/', (req, res) => {
 </header>
 
 <div id="error-banner"></div>
+
+<!-- Account drawer -->
+<div id="drawer-overlay"></div>
+<div id="drawer">
+  <div id="drawer-header">
+    <div>
+      <div id="drawer-title">—</div>
+      <div id="drawer-domain"></div>
+    </div>
+    <button id="drawer-close">✕</button>
+  </div>
+  <div id="drawer-stats">
+    <div class="drawer-stat"><div class="label">People</div><div class="value" id="da-people">—</div></div>
+    <div class="drawer-stat"><div class="label">Visits</div><div class="value" id="da-visits">—</div></div>
+    <div class="drawer-stat"><div class="label">Ad Clicks</div><div class="value" id="da-clicks">—</div></div>
+    <div class="drawer-stat"><div class="label">Top Score</div><div class="value" id="da-score">—</div></div>
+  </div>
+  <div id="drawer-body">
+    <h3>People &amp; Engagement</h3>
+    <div id="drawer-people"></div>
+  </div>
+</div>
 
 <div class="stats-grid">
   <div class="stat-card"><div class="label">Total Contacts</div><div class="value" id="s-total">—</div></div>
@@ -182,7 +244,7 @@ app.get('/', (req, res) => {
       return \`<tr>
         <td>
           <div class="contact-name">\${esc(name)}</div>
-          <div class="contact-company">\${esc(c.company || '')}</div>
+          \${c.company ? \`<button class="company-link" onclick="openAccount('\${esc(c.company)}')">\${esc(c.company)}</button>\` : ''}
         </td>
         <td><span class="contact-email">\${esc(c.email || '—')}</span></td>
         <td><span class="job-title">\${esc(c.jobTitle || '—')}</span></td>
@@ -231,6 +293,75 @@ app.get('/', (req, res) => {
 
   refresh();
   setInterval(refresh, 30000);
+
+  // --- Account drawer ---
+  let accountsCache = [];
+
+  async function fetchAccounts() {
+    const res = await fetch('/api/accounts');
+    const data = await res.json();
+    accountsCache = data.accounts || [];
+  }
+  fetchAccounts();
+
+  function openAccount(company) {
+    const acc = accountsCache.find(a => a.company === company);
+    if (!acc) { fetchAccounts().then(() => openAccount(company)); return; }
+
+    document.getElementById('drawer-title').textContent = acc.company;
+    document.getElementById('drawer-domain').textContent = acc.companyDomain || '';
+    document.getElementById('da-people').textContent = acc.peopleCount;
+    document.getElementById('da-visits').textContent = acc.totalVisits;
+    document.getElementById('da-clicks').textContent = acc.totalAdClicks;
+    document.getElementById('da-score').textContent = acc.topIntentScore;
+
+    const peopleEl = document.getElementById('drawer-people');
+    peopleEl.innerHTML = (acc.contacts || [])
+      .sort((a, b) => b.intentScore - a.intentScore)
+      .map(c => {
+        const name = [c.firstName, c.lastName].filter(Boolean).join(' ') || c.fullName || '—';
+        const tier = c.intentTier || 'cold';
+
+        // Build engagement timeline — pages + ad events, sorted by time
+        const events = [
+          ...(c.pagesVisited || []).map(p => ({ kind: 'page', label: 'Visited ' + p.url.replace(/^https?:\\/\\/[^\\/]+/, ''), time: p.visitedAt })),
+          ...(c.adEvents || []).map(e => ({ kind: e.type, label: (e.type === 'click' ? 'Clicked' : 'Saw') + ' ad' + (e.campaignName ? ' · ' + e.campaignName : ''), time: e.occurredAt })),
+        ].sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 8);
+
+        const eventsHtml = events.length === 0 ? '<div style="color:#475569;font-size:12px;padding-top:8px">No engagement recorded</div>' :
+          '<div class="engagement-list">' + events.map(ev =>
+            \`<div class="engagement-item">
+              <div class="engagement-dot \${ev.kind}"></div>
+              <div class="engagement-text">\${esc(ev.label)}</div>
+              <div class="engagement-time">\${relativeTime(ev.time)}</div>
+            </div>\`
+          ).join('') + '</div>';
+
+        return \`<div class="person-card">
+          <div class="person-card-top">
+            <div>
+              <div class="person-name">\${esc(name)}</div>
+              \${c.jobTitle ? \`<div class="person-title">\${esc(c.jobTitle)}</div>\` : ''}
+              \${c.email ? \`<div class="person-email">\${esc(c.email)}</div>\` : ''}
+            </div>
+            <span class="tier-badge \${tier}">\${tier} \${c.intentScore}</span>
+          </div>
+          \${eventsHtml}
+        </div>\`;
+      }).join('');
+
+    document.getElementById('drawer').classList.add('open');
+    document.getElementById('drawer-overlay').classList.add('open');
+  }
+
+  function closeDrawer() {
+    document.getElementById('drawer').classList.remove('open');
+    document.getElementById('drawer-overlay').classList.remove('open');
+  }
+
+  document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+  document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
 </script>
 </body>
 </html>`);
