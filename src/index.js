@@ -121,15 +121,20 @@ function shell(title, activeTab, body, extraStyles = '') {
   .bar-fill.warm { background:#f59e0b; }
 
   /* ── Filter bar ── */
-  .filter-bar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:0 32px 12px; }
-  .filter-bar-left { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .filter-bar-right { display:flex; gap:6px; align-items:center; }
-  .filter-select { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:5px 10px; font-size:12px; color:#e2e8f0; font-family:inherit; outline:none; cursor:pointer; max-width:180px; }
+  .filter-bar { display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:0 32px 12px; }
+  .filter-bar-left { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; }
+  .filter-bar-right { display:flex; gap:6px; align-items:center; padding-bottom:1px; }
+  .filter-field-wrap { display:flex; flex-direction:column; gap:3px; }
+  .filter-field-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; color:#475569; }
+  .filter-text-input { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:5px 10px; font-size:12px; color:#e2e8f0; font-family:inherit; outline:none; width:160px; }
+  .filter-text-input:focus { border-color:#6366f1; }
+  .filter-text-input::placeholder { color:#475569; }
+  .filter-select { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:5px 10px; font-size:12px; color:#e2e8f0; font-family:inherit; outline:none; cursor:pointer; }
   .filter-select:focus { border-color:#6366f1; }
   .filter-select option { background:#1e293b; }
-  .score-range-wrap { display:flex; align-items:center; gap:6px; }
-  .score-range-label { font-size:12px; color:#94a3b8; white-space:nowrap; }
-  input[type=range] { accent-color:#6366f1; width:80px; cursor:pointer; }
+  .score-range-wrap { display:flex; flex-direction:column; gap:3px; }
+  .score-range-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; color:#475569; }
+  input[type=range] { accent-color:#6366f1; width:90px; cursor:pointer; display:block; margin-top:2px; }
   .chip { display:inline-flex; align-items:center; gap:5px; background:#1e1b4b; border:1px solid #312e81; color:#a5b4fc; font-size:11px; font-weight:600; padding:3px 8px; border-radius:99px; cursor:pointer; transition:all .15s; }
   .chip:hover { background:#312e81; }
   .chip-x { opacity:.7; font-size:10px; }
@@ -233,19 +238,35 @@ app.get('/', (req, res) => {
 </div>
 
 <div class="section-wrap">
+  <!-- datalists for autocomplete -->
+  <datalist id="dl-titles"></datalist>
+  <datalist id="dl-companies"></datalist>
+
   <!-- Filter bar -->
   <div class="filter-bar" id="filter-bar">
     <div class="filter-bar-left">
-      <input class="search-box" id="search" placeholder="Search name, company, email…" oninput="debounceRender()">
-      <select class="filter-select" id="f-title" onchange="renderTable()"><option value="">All Titles</option></select>
-      <select class="filter-select" id="f-company" onchange="renderTable()"><option value="">All Companies</option></select>
-      <select class="filter-select" id="f-source" onchange="renderTable()">
-        <option value="">All Sources</option>
-        <option value="rb2b">RB2B</option>
-        <option value="vector">Vector</option>
-      </select>
+      <div class="filter-field-wrap">
+        <span class="filter-field-label">Search</span>
+        <input class="search-box" id="search" placeholder="Name, email, company…" oninput="debounceRender()">
+      </div>
+      <div class="filter-field-wrap">
+        <span class="filter-field-label">Title contains</span>
+        <input class="filter-text-input" id="f-title" list="dl-titles" placeholder="e.g. VP, Director…" oninput="debounceRender()">
+      </div>
+      <div class="filter-field-wrap">
+        <span class="filter-field-label">Company contains</span>
+        <input class="filter-text-input" id="f-company" list="dl-companies" placeholder="e.g. Acme…" oninput="debounceRender()">
+      </div>
+      <div class="filter-field-wrap">
+        <span class="filter-field-label">Source</span>
+        <select class="filter-select" id="f-source" onchange="renderTable()" style="margin-top:1px">
+          <option value="">Any</option>
+          <option value="rb2b">RB2B</option>
+          <option value="vector">Vector</option>
+        </select>
+      </div>
       <div class="score-range-wrap">
-        <label class="score-range-label">Score ≥ <span id="score-min-val">0</span></label>
+        <span class="filter-field-label">Score ≥ <span id="score-min-val">0</span></span>
         <input type="range" id="f-score-min" min="0" max="100" value="0" oninput="document.getElementById('score-min-val').textContent=this.value; renderTable()">
       </div>
     </div>
@@ -290,27 +311,23 @@ app.get('/', (req, res) => {
   async function loadPeople() {
     const data = await fetch('/api/contacts?limit=200&sort=intentScore&order=desc').then(r => r.json());
     allPeople = data.contacts || [];
-    populateDropdowns(allPeople);
+    populateAutocomplete(allPeople);
     buildDashboard(allPeople);
     renderTable();
   }
 
-  function populateDropdowns(people) {
-    // Job titles — sorted by frequency desc
+  function populateAutocomplete(people) {
+    // Job titles datalist — sorted by frequency desc
     const titleMap = {};
     people.forEach(p => { if (p.jobTitle) titleMap[p.jobTitle] = (titleMap[p.jobTitle]||0)+1; });
     const titles = Object.entries(titleMap).sort((a,b)=>b[1]-a[1]).map(([t])=>t);
-    const titleSel = document.getElementById('f-title');
-    const prevTitle = titleSel.value;
-    titleSel.innerHTML = '<option value="">All Titles</option>' +
-      titles.map(t => \`<option value="\${esc(t)}" \${prevTitle===t?'selected':''}>\${esc(t)}</option>\`).join('');
+    document.getElementById('dl-titles').innerHTML =
+      titles.map(t => \`<option value="\${esc(t)}">\`).join('');
 
-    // Companies — sorted alpha
+    // Companies datalist — sorted alpha
     const companies = [...new Set(people.map(p=>p.company).filter(Boolean))].sort();
-    const compSel = document.getElementById('f-company');
-    const prevComp = compSel.value;
-    compSel.innerHTML = '<option value="">All Companies</option>' +
-      companies.map(c => \`<option value="\${esc(c)}" \${prevComp===c?'selected':''}>\${esc(c)}</option>\`).join('');
+    document.getElementById('dl-companies').innerHTML =
+      companies.map(c => \`<option value="\${esc(c)}">\`).join('');
   }
 
   async function loadStats() {
@@ -400,15 +417,15 @@ app.get('/', (req, res) => {
 
   function renderTable() {
     const q         = (document.getElementById('search').value || '').toLowerCase();
-    const fTitle    = document.getElementById('f-title').value;
-    const fCompany  = document.getElementById('f-company').value;
+    const fTitle    = (document.getElementById('f-title').value || '').toLowerCase().trim();
+    const fCompany  = (document.getElementById('f-company').value || '').toLowerCase().trim();
     const fSource   = document.getElementById('f-source').value;
     const fScoreMin = parseInt(document.getElementById('f-score-min').value, 10) || 0;
 
     let list = allPeople.slice();
     if (activeTier)  list = list.filter(c => c.intentTier === activeTier);
-    if (fTitle)      list = list.filter(c => c.jobTitle === fTitle);
-    if (fCompany)    list = list.filter(c => c.company  === fCompany);
+    if (fTitle)      list = list.filter(c => (c.jobTitle||'').toLowerCase().includes(fTitle));
+    if (fCompany)    list = list.filter(c => (c.company||'').toLowerCase().includes(fCompany));
     if (fSource)     list = list.filter(c => (c.sources||[]).includes(fSource));
     if (fScoreMin>0) list = list.filter(c => (c.intentScore||0) >= fScoreMin);
     if (q) list = list.filter(c =>
@@ -432,8 +449,8 @@ app.get('/', (req, res) => {
     // Render active filter chips
     const chips = [];
     if (activeTier) chips.push({ label: 'Tier: ' + activeTier, clear: () => { activeTier=''; document.querySelectorAll('.filter-btn').forEach(b=>{b.classList.remove('active'); if(!b.dataset.tier)b.classList.add('active');}); renderTable(); }});
-    if (fTitle)     chips.push({ label: 'Title: ' + fTitle,    clear: () => { document.getElementById('f-title').value=''; renderTable(); }});
-    if (fCompany)   chips.push({ label: 'Company: ' + fCompany,clear: () => { document.getElementById('f-company').value=''; renderTable(); }});
+    if (fTitle)     chips.push({ label: 'Title contains: ' + document.getElementById('f-title').value,    clear: () => { document.getElementById('f-title').value=''; renderTable(); }});
+    if (fCompany)   chips.push({ label: 'Company contains: ' + document.getElementById('f-company').value,clear: () => { document.getElementById('f-company').value=''; renderTable(); }});
     if (fSource)    chips.push({ label: 'Source: ' + fSource,  clear: () => { document.getElementById('f-source').value=''; renderTable(); }});
     if (fScoreMin>0)chips.push({ label: 'Score ≥ ' + fScoreMin,clear: () => { document.getElementById('f-score-min').value=0; document.getElementById('score-min-val').textContent='0'; renderTable(); }});
     if (q)          chips.push({ label: 'Search: "' + q + '"', clear: () => { document.getElementById('search').value=''; renderTable(); }});
@@ -496,9 +513,7 @@ app.get('/', (req, res) => {
 
   function clearAllFilters() {
     activeTier = '';
-    document.getElementById('search').value = '';
-    document.getElementById('f-title').value = '';
-    document.getElementById('f-company').value = '';
+    ['search','f-title','f-company'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('f-source').value = '';
     document.getElementById('f-score-min').value = 0;
     document.getElementById('score-min-val').textContent = '0';
